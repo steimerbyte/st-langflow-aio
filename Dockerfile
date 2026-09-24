@@ -64,13 +64,10 @@ RUN dnf install -y --setopt=install_weak_deps=0 \
 #    Fedora 46's default python3 is 3.15, too new for langflow's wheels.
 #    We install python3.14 + uv and create an isolated venv.
 # =============================================================================
-RUN uv venv --python 3.14 /app/.venv \
-    && /app/.venv/bin/python -m ensurepip --upgrade \
-    && /app/.venv/bin/pip install --upgrade \
-        pip \
+RUN uv venv --python 3.14 /app/.venv --seed \
+    && uv pip install --python /app/.venv/bin/python \
         'setuptools<81' \
         wheel \
-    && /app/.venv/bin/pip install \
         langflow \
         langchain-anthropic \
         'psycopg[binary]' \
