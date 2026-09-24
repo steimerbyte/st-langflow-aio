@@ -104,9 +104,14 @@ COPY inject/sitecustomize.py   /tmp/sitecustomize.py
 COPY inject/verify_inplace.py  /tmp/verify_inplace.py
 COPY inject/smoke_test.py      /tmp/smoke_test.py
 
-RUN SITE=$(python3 -c "import site; print(site.getsitepackages()[0])") && \
-    cp /tmp/register_minimax.py "$SITE/register_minimax.py" && \
-    cp /tmp/sitecustomize.py   "$SITE/sitecustomize.py"   && \
+# Install into every site-packages directory Python reports — handles
+# both `lib/` and `lib64/` venv layouts and any future symlink scheme.
+RUN SITES=$(python3 -c 'import site; import sys; [print(p) for p in site.getsitepackages()]') && \
+    for SITE in $SITES; do \
+        cp /tmp/register_minimax.py "$SITE/register_minimax.py" && \
+        cp /tmp/sitecustomize.py   "$SITE/sitecustomize.py"   && \
+        echo "installed in $SITE"; \
+    done && \
     chmod +x /tmp/verify_inplace.py /tmp/smoke_test.py && \
     echo "=== AUTO-VERIFY ===" && \
     python3 /tmp/verify_inplace.py && \
