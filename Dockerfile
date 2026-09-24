@@ -26,6 +26,11 @@ RUN dnf install -y --setopt=install_weak_deps=0 \
         python3.14 \
         python3.14-devel \
         uv \
+        gcc \
+        gcc-c++ \
+        make \
+        libxml2-devel \
+        libxslt-devel \
         nodejs \
         npm \
         ffmpeg \
