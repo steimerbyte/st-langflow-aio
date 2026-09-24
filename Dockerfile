@@ -33,7 +33,7 @@ ENV LANGFLOW_CONFIG_DIR=/app/langflow \
 #    drop ffmpeg/chromium from v0.3.0 install; if you need them, wire
 #    in RPM Fusion / EPEL inside your fork.
 # =============================================================================
-RUN microdnf install -y --setopt=install_weak_deps=False \
+RUN microdnf install -y --setopt=install_weak_deps=0 \
         ca-certificates \
         tar \
     && microdnf clean all \
