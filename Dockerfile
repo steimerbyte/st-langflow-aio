@@ -76,6 +76,7 @@ RUN pip install --upgrade --break-system-packages pip setuptools wheel \
     && pip install --break-system-packages \
         langflow \
         langchain-anthropic \
+        psycopg2-binary \
         yt-dlp \
         requests
 
