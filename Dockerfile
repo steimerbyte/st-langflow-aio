@@ -1,60 +1,43 @@
 # syntax=docker/dockerfile:1.7
 # =============================================================================
 #  st-langflow-aio
-#  Langflow + ffmpeg + chromium + yt-dlp + node tools
-#  + MiniMax als Global Model Provider (Registry-basiert)
+#  Langflow + MiniMax als Global Model Provider
 #
-# Build:  docker build --no-cache -t st-langflow-aio .
-# Verify: docker exec -it <container> python3 /tmp/verify_inplace.py
-# Smoke:  docker exec -it <container> python3 /tmp/smoke_test.py <key>
+#  Build:  docker build --no-cache -t st-langflow-aio .
+#  Verify: docker exec -it <container> python3 /tmp/verify_inplace.py
+#  Smoke:  docker exec -it <container> python3 /tmp/smoke_test.py <key>
+#
+#  NOTE: langflowai/langflow switched to RHEL 10.2 (microdnf, no apt-get) since
+#  1.13.0.dev10. The previous Debian-era system-package list
+#  (ffmpeg/chromium/libgtk-3-* etc) is no longer installable from the base
+#  image's default repos. Media-stack capabilities (yt-dlp + chromium for
+#  puppeteer + Node tool wrappers) are dropped from v0.3.0 until upstream
+#  repos or UBI extras catch up. Core scope (Langflow + MiniMax as Global
+#  Model Provider) is preserved.
 # =============================================================================
 
 FROM langflowai/langflow:base-1.13.0.dev22
 
 USER root
 
-ENV DEBIAN_FRONTEND=noninteractive \
-    PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
-    PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium \
-    LANGFLOW_CONFIG_DIR=/app/langflow \
+ENV LANGFLOW_CONFIG_DIR=/app/langflow \
     LANGFLOW_DEV=false \
     LFX_DEV=false
 
 # =============================================================================
-# 1. System packages
+# 1. System packages (RHEL-flavored: microdnf only)
+#    The langflow base image (RHEL 10.2 UBI) ships with: python3.14, curl,
+#    ca-certificates, tar, git, basic GNU coreutils. It does NOT include
+#    ffmpeg, chromium, or puppeteer system libs (langflow's puppeteer-based
+#    components will be unavailable until upstream provides an alternative).
+#    drop ffmpeg/chromium from v0.3.0 install; if you need them, wire
+#    in RPM Fusion / EPEL inside your fork.
 # =============================================================================
-RUN apt-get update && apt-get install -y --no-install-recommends \
-        ffmpeg \
-        chromium \
-        fonts-liberation \
-        libasound2t64 \
-        libatk-bridge2.0-0t64 \
-        libatk1.0-0t64 \
-        libcups2t64 \
-        libdrm2 \
-        libgbm1 \
-        libgtk-3-0t64 \
-        libnspr4 \
-        libnss3 \
-        libx11-xcb1 \
-        libxcomposite1 \
-        libxdamage1 \
-        libxrandr2 \
-        libxkbcommon0 \
-        libxext6 \
-        xdg-utils \
+RUN microdnf install -y --setopt=install_weak_deps=False \
         ca-certificates \
-        curl \
-        gnupg \
-    && mkdir -p /etc/apt/keyrings \
-    && curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
-       | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg \
-    && echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_20.x nodistro main" \
-       > /etc/apt/sources.list.d/nodesource.list \
-    && apt-get update \
-    && apt-get install -y --no-install-recommends nodejs \
-    && apt-get purge -y --auto-remove gnupg \
-    && rm -rf /var/lib/apt/lists/*
+        tar \
+    && microdnf clean all \
+    && rm -rf /var/cache/dnf /var/cache/yum
 
 # =============================================================================
 # 2. Python packages
@@ -65,21 +48,26 @@ RUN pip install --no-cache-dir --break-system-packages \
         requests
 
 # =============================================================================
-# 3. Node tools
+# 3. Node.js 20 (tarball install — no apt key in RHEL base)
+#    Drops the puppeteer-core / yt-dlp-wrap wrappers for now; langflow
+#    itself can use its own bundled JS runtime for components.
 # =============================================================================
-WORKDIR /opt/tools
-RUN npm init -y >/dev/null \
- && npm install --no-audit --no-fund puppeteer-core yt-dlp-wrap \
- && npm cache clean --force \
- && rm -rf /tmp/*
-
-ENV PATH="/opt/tools/node_modules/.bin:${PATH}"
+RUN set -eux; \
+    curl -fsSL https://nodejs.org/dist/v20.19.5/node-v20.19.5-linux-x64.tar.xz \
+        -o /tmp/node.tar.xz && \
+    mkdir -p /opt/node20 && \
+    tar -xJf /tmp/node.tar.xz -C /opt/node20 --strip-components=1 && \
+    rm /tmp/node.tar.xz && \
+    ln -sf /opt/node20/bin/node /usr/local/bin/node && \
+    ln -sf /opt/node20/bin/npm  /usr/local/bin/npm  && \
+    ln -sf /opt/node20/bin/npx  /usr/local/bin/npx  && \
+    node --version && npm --version
 
 # =============================================================================
 # 4. Standalone MiniMaxModelComponent (LCModelComponent)
-#    Optional standalone component for users who want MiniMax in the
-#    Custom Components sidebar. The Global Provider registration in step 5
-#    is the primary mechanism — this is the "Custom Component" path.
+#    Optional — the registry-based registration in step 5 is the primary
+#    mechanism. This keeps flows that reference MiniMaxModelComponent by class
+#    working.
 # =============================================================================
 RUN python3 -c "import site; d=site.getsitepackages()[0]; \
     import os; os.makedirs(f'{d}/lfx/components/minimax', exist_ok=True); \
