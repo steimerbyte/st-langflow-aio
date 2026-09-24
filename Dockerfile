@@ -14,7 +14,7 @@
 #  Smoke:  docker exec -it <container> python3 /tmp/smoke_test.py <key>
 # =============================================================================
 
-FROM fedora:46
+FROM fedora:45
 
 ENV LANGFLOW_CONFIG_DIR=/app/langflow \
     LANGFLOW_DEV=false \
@@ -71,7 +71,8 @@ RUN dnf install -y --setopt=install_weak_deps=0 \
 # =============================================================================
 # 2. Python packages (langflow + ecosystem + MiniMax deps)
 # =============================================================================
-RUN pip install --break-system-packages \
+RUN pip install --upgrade --break-system-packages pip setuptools wheel \
+    && pip install --break-system-packages \
         langflow \
         langchain-anthropic \
         yt-dlp \
