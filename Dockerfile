@@ -14,7 +14,7 @@
 #  Smoke:  docker exec -it <container> python3 /tmp/smoke_test.py <key>
 # =============================================================================
 
-FROM fedora:45
+FROM fedora:44
 
 ENV LANGFLOW_CONFIG_DIR=/app/langflow \
     LANGFLOW_DEV=false \
