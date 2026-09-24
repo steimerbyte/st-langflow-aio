@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.7
 # =============================================================================
 #  st-langflow-aio
-#  Langflow + MiniMax als Global Model Provider — Fedora 46 base
+#  Langflow + MiniMax als Global Model Provider — Fedora 45 base
 #
 #  Architekturwechsel v0.4.0:
 #    - Downstream langflowai/langflow-Image weggeworfen (RHEL UBI 10.2,
@@ -14,7 +14,7 @@
 #  Smoke:  docker exec -it <container> python3 /tmp/smoke_test.py <key>
 # =============================================================================
 
-FROM fedora:46
+FROM fedora:45
 
 ENV LANGFLOW_CONFIG_DIR=/app/langflow \
     LANGFLOW_DEV=false \
@@ -71,17 +71,8 @@ RUN dnf install -y --setopt=install_weak_deps=0 \
 
 # =============================================================================
 # 2. Python packages (langflow + ecosystem + MiniMax deps)
-#    Fedora 46 ships Python 3.15 with newer setuptools that drops
-#    pkg_resources by default. We pin setuptools<81 which still ships it,
-#    so pandas/lxml source builds don't crash.
 # =============================================================================
-RUN pip install --upgrade --break-system-packages \
-        'setuptools<81' \
-        wheel \
-        poetry-core \
-        hatchling \
-        hatch-vcs \
-        hatch-fancy-pypi-readme \
+RUN pip install --upgrade --break-system-packages pip setuptools wheel \
     && pip install --break-system-packages \
         langflow \
         langchain-anthropic \
