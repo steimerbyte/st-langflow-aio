@@ -25,38 +25,32 @@ ENV LANGFLOW_CONFIG_DIR=/app/langflow \
     LFX_DEV=false
 
 # =============================================================================
-# 1. System packages (RHEL-flavored: microdnf + EPEL + RPM Fusion free)
+# 1. System packages (RHEL UBI 10.2: microdnf + CRB + EPEL + RPM Fusion free)
 #    Base langflow image is RHEL 10.2 UBI which ships with python3.14, curl,
 #    ca-certificates, tar, git, basic GNU coreutils. Bring in ffmpeg via
-#    RPM Fusion free and chromium via EPEL.
+#    RPM Fusion free, chromium via EPEL. CRB (CodeReady Builder, formerly
+#    PowerTools) is enabled because several EPEL packages depend on it.
 # =============================================================================
 RUN set -eux; \
+    # Base + dnf-plugins-core (for /usr/bin/crb enable)
     microdnf install -y --setopt=install_weak_deps=0 \
-        ca-certificates tar \
+        ca-certificates tar dnf-plugins-core \
     && microdnf clean all \
     && rm -rf /var/cache/dnf /var/cache/yum; \
+    # Enable CodeReady Builder
+    /usr/bin/crb enable 2>&1 | tail -2 || true; \
     # Enable EPEL (chromium lives there)
     rpm -i https://dl.fedoraproject.org/pub/epel/epel-release-latest-10.noarch.rpm 2>&1 | tail -2; \
-    # Enable RPM Fusion free (ffmpeg lives there)
+    # Enable RPM Fusion free (ffmpeg lives there; key NOKEY warnings are benign)
     rpm -i https://mirrors.rpmfusion.org/free/el/rpmfusion-free-release-10.noarch.rpm 2>&1 | tail -2; \
+    # Install — let chromium's RPM deps pull in the X11/audio stack
     microdnf install -y --setopt=install_weak_deps=0 \
         ffmpeg \
         chromium \
-        liberation-fonts \
-        nss \
-        alsa-lib \
-        at-spi2-atk \
-        libdrm \
-        libgbm \
-        libXcomposite \
-        libXdamage \
-        libXext \
-        libXfixes \
-        libXrandr \
-        libxkbcommon \
-        mesa-libgbm \
     && microdnf clean all \
-    && rm -rf /var/cache/dnf /var/cache/yum
+    && rm -rf /var/cache/dnf /var/cache/yum; \
+    # Sanity-log
+    rpm -q ffmpeg chromium 2>&1 | head -3
 
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
     PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
