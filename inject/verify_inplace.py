@@ -23,14 +23,31 @@ print("MiniMax Registry Verification")
 print("=" * 60)
 
 # Locate site-packages
+import site as _site
+
 SITE = None
-for p in Path(sys.prefix).glob("lib/python*/site-packages"):
-    if (p / "lfx" / "base" / "models" / "model_metadata.py").exists():
-        SITE = p
+# 1. Trust Python's own resolution (handles both `lib/` and `lib64/` venv layouts)
+for p in _site.getsitepackages():
+    pp = Path(p)
+    if (pp / "lfx" / "base" / "models" / "model_metadata.py").exists():
+        SITE = pp
         break
+
+# 2. Fallback: scan sys.prefix for any lib*/python*/site-packages containing lfx
+if SITE is None:
+    for pattern in ("lib/python*/site-packages", "lib64/python*/site-packages"):
+        for p in Path(sys.prefix).glob(pattern):
+            if (p / "lfx" / "base" / "models" / "model_metadata.py").exists():
+                SITE = p
+                break
+        if SITE is not None:
+            break
 
 if SITE is None:
     print("ERROR: site-packages not found")
+    print(f"sys.prefix = {sys.prefix}")
+    print(f"sys.path = {sys.path}")
+    print(f"site.getsitepackages() = {_site.getsitepackages()}")
     sys.exit(1)
 
 print(f"site-packages: {SITE}\n")
