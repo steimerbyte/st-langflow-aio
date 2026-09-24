@@ -182,4 +182,39 @@ except Exception:
 else:
     print("SKIP: model_input_constants.py already has MiniMax")
 
+# ============================================================================
+# 5. unified_models/instantiation.py — MiniMax base_url branch in get_llm()
+#    ChatAnthropic uses ``anthropic_api_url`` to override the base URL.
+#    Insert the MiniMax block right before the final ``try: return model_class(...)``.
+# ============================================================================
+inst_file = MODELS_DIR / "unified_models" / "instantiation.py"
+if inst_file.exists():
+    inst_content = inst_file.read_text()
+    if 'provider == "MiniMax"' not in inst_content:
+        minimax_get_llm = '''    elif provider == "MiniMax":
+        # MiniMax exposes an Anthropic-SDK-compatible endpoint.
+        provider_meta = model_provider_metadata.get(provider, {})
+        provider_vars = unified_models_module.get_all_variables_for_provider(user_id, provider)
+        base_url_value = (
+            provider_vars.get("MINIMAX_BASE_URL")
+            or os.environ.get("MINIMAX_BASE_URL")
+            or provider_meta.get("base_url")
+        )
+        if base_url_value:
+            kwargs["anthropic_api_url"] = base_url_value
+
+'''
+        # Anchor: the final ``try: return model_class(**kwargs)``. Insert our block right above it.
+        anchor = "    try:\n        return model_class(**kwargs)"
+        if anchor in inst_content:
+            inst_content = inst_content.replace(anchor, minimax_get_llm + anchor, 1)
+            inst_file.write_text(inst_content)
+            print("OK: instantiation.py patched (MiniMax base_url)")
+        else:
+            print("WARN: Could not find final ``try: return model_class(...)`` in instantiation.py")
+    else:
+        print("SKIP: instantiation.py already has MiniMax branch")
+else:
+    print("WARN: instantiation.py not found")
+
 print("\nDone! MiniMax is now registered as a global model provider.")
