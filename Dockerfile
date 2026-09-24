@@ -79,7 +79,7 @@ RUN pip install --upgrade --break-system-packages 'pip<25' 'setuptools<81' wheel
     && pip install --break-system-packages --no-build-isolation \
         langflow \
         langchain-anthropic \
-        psycopg2-binary \
+        'psycopg[binary]' \
         yt-dlp \
         requests
 
