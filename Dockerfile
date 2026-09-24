@@ -1,20 +1,15 @@
 # syntax=docker/dockerfile:1.7
 # =============================================================================
 #  st-langflow-aio
-#  Langflow + MiniMax als Global Model Provider — Fedora 45 base
-#
-#  Architekturwechsel v0.4.0:
-#    - Downstream langflowai/langflow-Image weggeworfen (RHEL UBI 10.2,
-#      keine ffmpeg/chromium ohne Entitlements)
-#    - Stattdessen: Fedora 46 (dnf) + pip-install langflow from PyPI
-#    - ffmpeg und chromium direkt aus Fedora-Repos (kein RPM Fusion nötig)
+#  Langflow + MiniMax als Global Model Provider
+#  Fedora 46 OS + Python 3.14 venv via uv
 #
 #  Build:  docker build --no-cache -t st-langflow-aio .
-#  Verify: docker exec -it <container> python3 /tmp/verify_inplace.py
-#  Smoke:  docker exec -it <container> python3 /tmp/smoke_test.py <key>
+#  Verify: docker exec -it <container> /app/.venv/bin/python /tmp/verify_inplace.py
+#  Smoke:  docker exec -it <container> /app/.venv/bin/python /tmp/smoke_test.py <key>
 # =============================================================================
 
-FROM fedora:45
+FROM fedora:46
 
 ENV LANGFLOW_CONFIG_DIR=/app/langflow \
     LANGFLOW_DEV=false \
@@ -28,14 +23,9 @@ ENV LANGFLOW_CONFIG_DIR=/app/langflow \
 # 1. System packages (Fedora 46 native: dnf, ffmpeg + chromium in main repos)
 # =============================================================================
 RUN dnf install -y --setopt=install_weak_deps=0 \
-        python3 \
-        python3-devel \
-        python3-pip \
-        libxml2-devel \
-        libxslt-devel \
-        gcc \
-        gcc-c++ \
-        make \
+        python3.14 \
+        python3.14-devel \
+        uv \
         nodejs \
         npm \
         ffmpeg \
@@ -70,15 +60,24 @@ RUN dnf install -y --setopt=install_weak_deps=0 \
     && ln -sf /usr/bin/chromium-browser /usr/local/bin/chromium
 
 # =============================================================================
-# 2. Python packages (langflow + ecosystem + MiniMax deps)
+# 2. Python venv (Python 3.14, uv-managed) + langflow + deps
+#    Fedora 46's default python3 is 3.15, too new for langflow's wheels.
+#    We install python3.14 + uv and create an isolated venv.
 # =============================================================================
-RUN pip install --upgrade --break-system-packages pip setuptools wheel \
-    && pip install --break-system-packages \
+RUN uv venv --python 3.14 /app/.venv \
+    && /app/.venv/bin/python -m ensurepip --upgrade \
+    && /app/.venv/bin/pip install --upgrade \
+        pip \
+        'setuptools<81' \
+        wheel \
+    && /app/.venv/bin/pip install \
         langflow \
         langchain-anthropic \
         'psycopg[binary]' \
         yt-dlp \
         requests
+
+ENV PATH="/app/.venv/bin:${PATH}"
 
 # =============================================================================
 # 3. Standalone MiniMaxModelComponent (LCModelComponent)
@@ -86,29 +85,24 @@ RUN pip install --upgrade --break-system-packages pip setuptools wheel \
 #    mechanism. Keeps flows that reference MiniMaxModelComponent by class
 #    working.
 # =============================================================================
-RUN python3 -c "import site; d=site.getsitepackages()[0]; \
-    import os; os.makedirs(f'{d}/lfx/components/minimax', exist_ok=True); \
-    open(f'{d}/lfx/components/minimax/__init__.py','w').write('''from __future__ import annotations\nfrom typing import TYPE_CHECKING, Any\nfrom lfx.components._importing import import_mod\nif TYPE_CHECKING:\n    from lfx.components.minimax.minimax import MiniMaxModelComponent\n_dynamic_imports = {\"MiniMaxModelComponent\": \"minimax\"}\n__all__ = [\"MiniMaxModelComponent\"]\ndef __getattr__(attr_name: str) -> Any:\n    if attr_name not in _dynamic_imports:\n        raise AttributeError(attr_name)\n    try:\n        result = import_mod(attr_name, _dynamic_imports[attr_name], __spec__.parent)\n    except (ModuleNotFoundError, ImportError, AttributeError) as e:\n        raise AttributeError(str(e)) from e\n    globals()[attr_name] = result\n    return result\n'''); print('init.py OK')"
-
 COPY inject/lfx_components/lfx/components/minimax/minimax.py /tmp/minimax_component.py
-RUN SITE=$(python3 -c "import site; print(site.getsitepackages()[0])") && \
+RUN SITE=$(/app/.venv/bin/python -c 'import site; print(site.getsitepackages()[0])') && \
+    mkdir -p "$SITE/lfx/components/minimax" && \
+    printf 'from __future__ import annotations\nfrom typing import TYPE_CHECKING, Any\nfrom lfx.components._importing import import_mod\nif TYPE_CHECKING:\n    from lfx.components.minimax.minimax import MiniMaxModelComponent\n_dynamic_imports = {"MiniMaxModelComponent": "minimax"}\n__all__ = ["MiniMaxModelComponent"]\ndef __getattr__(attr_name: str) -> Any:\n    if attr_name not in _dynamic_imports:\n        raise AttributeError(attr_name)\n    try:\n        result = import_mod(attr_name, _dynamic_imports[attr_name], __spec__.parent)\n    except (ModuleNotFoundError, ImportError, AttributeError) as e:\n        raise AttributeError(str(e)) from e\n    globals()[attr_name] = result\n    return result\n' > "$SITE/lfx/components/minimax/__init__.py" && \
     cp /tmp/minimax_component.py "$SITE/lfx/components/minimax/minimax.py" && \
     rm /tmp/minimax_component.py && \
     echo "minimax.py installed"
 
 # =============================================================================
 # 4. MiniMax as Global Model Provider (provider_registry)
-#    Single source of truth: ProviderDescriptor with metadata + catalog_loader.
-#    Survives upstream langflow refactors; no file patching.
 # =============================================================================
 COPY inject/register_minimax.py /tmp/register_minimax.py
 COPY inject/sitecustomize.py   /tmp/sitecustomize.py
 COPY inject/verify_inplace.py  /tmp/verify_inplace.py
 COPY inject/smoke_test.py      /tmp/smoke_test.py
 
-# Install into every site-packages directory Python reports — handles
-# both `lib/` and `lib64/` venv layouts and any future symlink scheme.
-RUN SITES=$(python3 -c 'import site; import sys; [print(p) for p in site.getsitepackages()]') && \
+# Install sitecustomize.py + register_minimax.py into EVERY site-packages dir
+RUN SITES=$(/app/.venv/bin/python -c 'import site; import sys; [print(p) for p in site.getsitepackages()]') && \
     for SITE in $SITES; do \
         cp /tmp/register_minimax.py "$SITE/register_minimax.py" && \
         cp /tmp/sitecustomize.py   "$SITE/sitecustomize.py"   && \
@@ -116,7 +110,7 @@ RUN SITES=$(python3 -c 'import site; import sys; [print(p) for p in site.getsite
     done && \
     chmod +x /tmp/verify_inplace.py /tmp/smoke_test.py && \
     echo "=== AUTO-VERIFY ===" && \
-    python3 /tmp/verify_inplace.py && \
+    /app/.venv/bin/python /tmp/verify_inplace.py && \
     echo "=== AUTO-VERIFY END ===" && \
     rm /tmp/register_minimax.py /tmp/sitecustomize.py
 
