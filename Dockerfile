@@ -9,7 +9,7 @@
 # Smoke:  docker exec -it <container> python3 /tmp/smoke_test.py <key>
 # =============================================================================
 
-FROM langflowai/langflow:latest
+FROM langflowai/langflow:base-1.13.0.dev22
 
 USER root
 
