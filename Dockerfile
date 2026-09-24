@@ -75,7 +75,13 @@ RUN dnf install -y --setopt=install_weak_deps=0 \
 #    pkg_resources by default. We pin setuptools<81 which still ships it,
 #    so pandas/lxml source builds don't crash.
 # =============================================================================
-RUN pip install --upgrade --break-system-packages 'setuptools<81' wheel \
+RUN pip install --upgrade --break-system-packages \
+        'setuptools<81' \
+        wheel \
+        poetry-core \
+        hatchling \
+        hatch-vcs \
+        hatch-fancy-pypi-readme \
     && pip install --break-system-packages --no-build-isolation \
         langflow \
         langchain-anthropic \
