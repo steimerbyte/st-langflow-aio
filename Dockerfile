@@ -1,74 +1,81 @@
 # syntax=docker/dockerfile:1.7
 # =============================================================================
 #  st-langflow-aio
-#  Langflow + MiniMax als Global Model Provider
+#  Langflow + MiniMax als Global Model Provider — Fedora 46 base
+#
+#  Architekturwechsel v0.4.0:
+#    - Downstream langflowai/langflow-Image weggeworfen (RHEL UBI 10.2,
+#      keine ffmpeg/chromium ohne Entitlements)
+#    - Stattdessen: Fedora 46 (dnf) + pip-install langflow from PyPI
+#    - ffmpeg und chromium direkt aus Fedora-Repos (kein RPM Fusion nötig)
 #
 #  Build:  docker build --no-cache -t st-langflow-aio .
 #  Verify: docker exec -it <container> python3 /tmp/verify_inplace.py
 #  Smoke:  docker exec -it <container> python3 /tmp/smoke_test.py <key>
-#
-#  NOTE: langflowai/langflow switched to RHEL 10.2 (microdnf, no apt-get) since
-#  1.13.0.dev10. The previous Debian-era system-package list
-#  (ffmpeg/chromium/libgtk-3-* etc) is no longer installable from the base
-#  image's default repos. Media-stack capabilities (yt-dlp + chromium for
-#  puppeteer + Node tool wrappers) are dropped from v0.3.0 until upstream
-#  repos or UBI extras catch up. Core scope (Langflow + MiniMax as Global
-#  Model Provider) is preserved.
 # =============================================================================
 
-FROM langflowai/langflow:base-1.13.0.dev22
-
-USER root
+FROM fedora:46
 
 ENV LANGFLOW_CONFIG_DIR=/app/langflow \
     LANGFLOW_DEV=false \
-    LFX_DEV=false
+    LFX_DEV=false \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
+    PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 
 # =============================================================================
-# 1. System packages (RHEL UBI 10.2: microdnf)
-#    Base langflow image is RHEL 10.2 UBI which ships with python3.14, curl,
-#    ca-certificates, tar, git, basic GNU coreutils.
-#
-#    ffmpeg + chromium were targeted in v0.3.2 but blocked by missing
-#    transitive deps (libSDL2-2.0.so.0, libpipewire-0.3.so.0) that ship only
-#    behind Red Hat paid entitlements or in yum-conflicts-tracked satellite
-#    channels. With the UBIs `librhsm-WARNING: Found 0 entitlement certificates`
-#    in effect, microdnf cannot satisfy either path. Tracked as follow-up.
+# 1. System packages (Fedora 46 native: dnf, ffmpeg + chromium in main repos)
 # =============================================================================
-RUN microdnf install -y --setopt=install_weak_deps=0 \
+RUN dnf install -y --setopt=install_weak_deps=0 \
+        python3 \
+        python3-devel \
+        python3-pip \
+        nodejs \
+        npm \
+        ffmpeg \
+        chromium \
+        chromium-headless \
+        liberation-fonts \
+        liberation-sans-fonts \
+        liberation-mono-fonts \
+        liberation-serif-fonts \
+        nss \
+        alsa-lib \
+        at-spi2-atk \
+        libdrm \
+        libgbm \
+        libXcomposite \
+        libXdamage \
+        libXext \
+        libXfixes \
+        libXrandr \
+        libxkbcommon \
+        mesa-libgbm \
+        glib2 \
+        gtk3 \
+        git \
         ca-certificates \
         tar \
-    && microdnf clean all \
-    && rm -rf /var/cache/dnf /var/cache/yum
+        gzip \
+        findutils \
+        which \
+    && dnf clean all \
+    && rm -rf /var/cache/dnf
 
 # =============================================================================
-# 2. Python packages
+# 2. Python packages (langflow + ecosystem + MiniMax deps)
 # =============================================================================
-RUN pip install --no-cache-dir --break-system-packages \
-        yt-dlp \
+RUN pip install --break-system-packages \
+        langflow \
         langchain-anthropic \
+        yt-dlp \
         requests
 
 # =============================================================================
-# 3. Node.js 20 (tarball install — no apt key in RHEL base)
-#    Drops the puppeteer-core / yt-dlp-wrap wrappers for now; langflow
-#    itself can use its own bundled JS runtime for components.
-# =============================================================================
-RUN set -eux; \
-    curl -fsSL https://nodejs.org/dist/v20.19.5/node-v20.19.5-linux-x64.tar.xz \
-        -o /tmp/node.tar.xz && \
-    mkdir -p /opt/node20 && \
-    tar -xJf /tmp/node.tar.xz -C /opt/node20 --strip-components=1 && \
-    rm /tmp/node.tar.xz && \
-    ln -sf /opt/node20/bin/node /usr/local/bin/node && \
-    ln -sf /opt/node20/bin/npm  /usr/local/bin/npm  && \
-    ln -sf /opt/node20/bin/npx  /usr/local/bin/npx  && \
-    node --version && npm --version
-
-# =============================================================================
-# 4. Standalone MiniMaxModelComponent (LCModelComponent)
-#    Optional — the registry-based registration in step 5 is the primary
-#    mechanism. This keeps flows that reference MiniMaxModelComponent by class
+# 3. Standalone MiniMaxModelComponent (LCModelComponent)
+#    Optional — the registry-based registration in step 4 is the primary
+#    mechanism. Keeps flows that reference MiniMaxModelComponent by class
 #    working.
 # =============================================================================
 RUN python3 -c "import site; d=site.getsitepackages()[0]; \
@@ -82,7 +89,7 @@ RUN SITE=$(python3 -c "import site; print(site.getsitepackages()[0])") && \
     echo "minimax.py installed"
 
 # =============================================================================
-# 5. MiniMax as Global Model Provider (provider_registry)
+# 4. MiniMax as Global Model Provider (provider_registry)
 #    Single source of truth: ProviderDescriptor with metadata + catalog_loader.
 #    Survives upstream langflow refactors; no file patching.
 # =============================================================================
