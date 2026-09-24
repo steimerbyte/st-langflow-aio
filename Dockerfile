@@ -73,7 +73,7 @@ RUN uv venv --python 3.14 /app/.venv --seed \
     && uv pip install --python /app/.venv/bin/python \
         'setuptools<81' \
         wheel \
-        'langflow==1.12.3' \
+        'langflow==1.10.3' \
         langchain-anthropic \
         'psycopg[binary]' \
         yt-dlp \
@@ -104,17 +104,32 @@ COPY inject/verify_inplace.py  /tmp/verify_inplace.py
 COPY inject/smoke_test.py      /tmp/smoke_test.py
 
 # Install sitecustomize.py + register_minimax.py into EVERY site-packages dir
+# =============================================================================
+# 4. MiniMax as Global Model Provider (registry OR patch path)
+#    minimax_setup.py dispatches based on the langflow version installed.
+#    registry_minimax.py + sitecustomize.py cover the registry path;
+#    patch_full_provider.py covers the 5-file patch path (langflow <= 1.10).
+# =============================================================================
+COPY inject/register_minimax.py       /tmp/register_minimax.py
+COPY inject/sitecustomize.py         /tmp/sitecustomize.py
+COPY inject/minimax_setup.py         /tmp/minimax_setup.py
+COPY inject/patch_full_provider.py   /tmp/patch_full_provider.py
+COPY inject/verify_inplace.py        /tmp/verify_inplace.py
+COPY inject/smoke_test.py            /tmp/smoke_test.py
+
 RUN SITES=$(/app/.venv/bin/python -c 'import site; import sys; [print(p) for p in site.getsitepackages()]') && \
     for SITE in $SITES; do \
         cp /tmp/register_minimax.py "$SITE/register_minimax.py" && \
         cp /tmp/sitecustomize.py   "$SITE/sitecustomize.py"   && \
         echo "installed in $SITE"; \
     done && \
-    chmod +x /tmp/verify_inplace.py /tmp/smoke_test.py && \
+    chmod +x /tmp/verify_inplace.py /tmp/smoke_test.py /tmp/minimax_setup.py && \
+    echo "=== MINIMAX SETUP ===" && \
+    /app/.venv/bin/python /tmp/minimax_setup.py && \
     echo "=== AUTO-VERIFY ===" && \
     /app/.venv/bin/python /tmp/verify_inplace.py && \
     echo "=== AUTO-VERIFY END ===" && \
-    rm /tmp/register_minimax.py /tmp/sitecustomize.py
+    rm /tmp/register_minimax.py /tmp/sitecustomize.py /tmp/minimax_setup.py /tmp/patch_full_provider.py
 
 WORKDIR /app/langflow
 
