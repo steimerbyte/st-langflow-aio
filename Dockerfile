@@ -22,7 +22,7 @@ ENV LANGFLOW_CONFIG_DIR=/app/langflow \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
-    PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+    PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
 
 # =============================================================================
 # 1. System packages (Fedora 46 native: dnf, ffmpeg + chromium in main repos)
@@ -66,7 +66,8 @@ RUN dnf install -y --setopt=install_weak_deps=0 \
         findutils \
         which \
     && dnf clean all \
-    && rm -rf /var/cache/dnf
+    && rm -rf /var/cache/dnf \
+    && ln -sf /usr/bin/chromium-browser /usr/local/bin/chromium
 
 # =============================================================================
 # 2. Python packages (langflow + ecosystem + MiniMax deps)
