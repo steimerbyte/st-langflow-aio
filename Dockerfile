@@ -76,6 +76,7 @@ RUN uv venv --python 3.14 /app/.venv --seed \
         'langflow==1.10.3' \
         langchain-anthropic \
         'psycopg[binary]' \
+        psycopg2-binary \
         yt-dlp \
         requests
 
