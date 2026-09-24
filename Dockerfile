@@ -31,6 +31,11 @@ RUN dnf install -y --setopt=install_weak_deps=0 \
         python3 \
         python3-devel \
         python3-pip \
+        libxml2-devel \
+        libxslt-devel \
+        gcc \
+        gcc-c++ \
+        make \
         nodejs \
         npm \
         ffmpeg \
