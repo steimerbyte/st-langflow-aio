@@ -2,7 +2,7 @@
 # =============================================================================
 #  st-langflow-aio
 #  Langflow + ffmpeg + chromium + yt-dlp + node tools
-#  + MiniMax als Global Model Provider
+#  + MiniMax als Global Model Provider (Registry-basiert)
 #
 # Build:  docker build --no-cache -t st-langflow-aio .
 # Verify: docker exec -it <container> python3 /tmp/verify_inplace.py
@@ -76,7 +76,10 @@ RUN npm init -y >/dev/null \
 ENV PATH="/opt/tools/node_modules/.bin:${PATH}"
 
 # =============================================================================
-# 4. MiniMax Component (LCModelComponent) installieren
+# 4. Standalone MiniMaxModelComponent (LCModelComponent)
+#    Optional standalone component for users who want MiniMax in the
+#    Custom Components sidebar. The Global Provider registration in step 5
+#    is the primary mechanism — this is the "Custom Component" path.
 # =============================================================================
 RUN python3 -c "import site; d=site.getsitepackages()[0]; \
     import os; os.makedirs(f'{d}/lfx/components/minimax', exist_ok=True); \
@@ -89,26 +92,23 @@ RUN SITE=$(python3 -c "import site; print(site.getsitepackages()[0])") && \
     echo "minimax.py installed"
 
 # =============================================================================
-# 5. Patch Langflow Backend
+# 5. MiniMax as Global Model Provider (provider_registry)
+#    Single source of truth: ProviderDescriptor with metadata + catalog_loader.
+#    Survives upstream langflow refactors; no file patching.
 # =============================================================================
-COPY inject/patch_full_provider.py /tmp/patch.py
-RUN python3 /tmp/patch.py && rm /tmp/patch.py
+COPY inject/register_minimax.py /tmp/register_minimax.py
+COPY inject/sitecustomize.py   /tmp/sitecustomize.py
+COPY inject/verify_inplace.py  /tmp/verify_inplace.py
+COPY inject/smoke_test.py      /tmp/smoke_test.py
 
-# =============================================================================
-# 6. Verify + Smoke-Test in /tmp/ ablegen
-# =============================================================================
-COPY inject/verify_inplace.py /tmp/verify_inplace.py
-COPY inject/smoke_test.py /tmp/smoke_test.py
-RUN chmod +x /tmp/verify_inplace.py /tmp/smoke_test.py
-
-# =============================================================================
-# 7. Auto-Patch beim Build
-# =============================================================================
-COPY inject/verify_inplace.py /tmp/auto_patch.py
 RUN SITE=$(python3 -c "import site; print(site.getsitepackages()[0])") && \
-    echo "=== AUTO-PATCH START ===" && \
-    python3 /tmp/auto_patch.py 2>&1 | tail -30 && \
-    echo "=== AUTO-PATCH END ==="
+    cp /tmp/register_minimax.py "$SITE/register_minimax.py" && \
+    cp /tmp/sitecustomize.py   "$SITE/sitecustomize.py"   && \
+    chmod +x /tmp/verify_inplace.py /tmp/smoke_test.py && \
+    echo "=== AUTO-VERIFY ===" && \
+    python3 /tmp/verify_inplace.py && \
+    echo "=== AUTO-VERIFY END ===" && \
+    rm /tmp/register_minimax.py /tmp/sitecustomize.py
 
 WORKDIR /app/langflow
 

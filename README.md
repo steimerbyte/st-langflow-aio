@@ -10,7 +10,7 @@
 
 **Langflow + MiniMax als voll integrierter Global Model Provider.**
 
-> v0.2.0 — verifiziert funktionsfaehig, Open Source, kein API-Key noetig fuer das Image selbst.
+> v0.3.0 — Registry-basiert, kompatibel mit Langflow `latest` (1.13+), Open Source, kein API-Key noetig fuer das Image selbst.
 
 ## Was es macht
 
@@ -22,7 +22,7 @@
 ## Quickstart
 
 ```bash
-git clone https://github.com/steimbyte/st-langflow-aio.git
+git clone https://github.com/steimerbyte/st-langflow-aio.git
 cd st-langflow-aio
 
 # .env anlegen
@@ -50,7 +50,7 @@ Das Image laeuft auch ohne MiniMax-Key. Setze einfach `MINIMAX_API_KEY=` (leer) 
 ## Verifizieren
 
 ```bash
-# Patch-Status (alle 5 Files muessen OK sein)
+# Provider-Registrierung verifizieren (Registry-State, 7 Checks)
 docker exec -it $(docker ps -qf name=langflow) python3 /tmp/verify_inplace.py
 
 # Echter API-Test mit deinem Key
@@ -76,20 +76,31 @@ API-Key holen: https://platform.minimax.io/
 | MiniMax nicht in Settings sichtbar | `docker compose down -v && docker compose up -d` |
 | `invalid x-api-key` Fehler | Key im [MiniMax Console](https://platform.minimax.io/) pruefen, kein Whitespace |
 | Provider im Agent nicht waehlbar | Browser Hard-Refresh (Strg+Shift+R) |
-| Alte Patches aktiv | `docker compose down -v && docker rmi st-langflow-aio -f && docker build --no-cache .` |
+| Alte Build-Caches aktiv (Pre-v0.3 Patch-Ansatz) | `docker compose down -v && docker rmi st-langflow-aio -f && docker build --no-cache .` |
+| `MiniMax is_registered() returned False` nach Container-Start | `docker exec -it <container> python3 /tmp/verify_inplace.py` — Auto-Register über `sitecustomize.py` greift erst beim nächsten Prozess-Start, dann `docker compose restart langflow` |
 
 ## Architektur
 
-5 Backend-Files in `site-packages/lfx/` werden beim Docker-Build gepatcht:
+Seit v0.3.0 nutzt die Integration **`provider_registry.register_provider()`** statt
+Datei-Patching. Das macht das Image upgrade-tolerant gegenüber Langflow-Refactors.
 
-| Datei | Zweck |
-|-------|--------|
-| `lfx/base/models/minimax_constants.py` | NEU — Modelliste |
-| `lfx/base/models/model_metadata.py` | `MODEL_PROVIDER_METADATA["MiniMax"]` |
-| `lfx/base/models/unified_models/provider_queries.py` | `MINIMAX_MODELS_DETAILED` |
-| `lfx/base/models/model_input_constants.py` | `MODEL_PROVIDERS_DICT` + `_LIST` |
-| `lfx/base/models/unified_models/instantiation.py` | `get_llm()` base_url Special-Case |
-| `lfx/components/minimax/minimax.py` | `MiniMaxModelComponent` (LCModelComponent) |
+| Komponente | Zweck |
+|------------|-------|
+| `inject/register_minimax.py` | ProviderDescriptor + catalog_loader (8 Modelle) |
+| `inject/sitecustomize.py` | Auto-Registrierung beim Python-Startup |
+| `inject/verify_inplace.py` | Verifiziert Registry-State (7 Checks) |
+| `inject/smoke_test.py` | Echter API-Smoke-Test gegen MiniMax |
+| `inject/lfx_components/.../minimax.py` | Standalone `MiniMaxModelComponent` (Custom-Component-Pfad, optional) |
+
+**Was passiert beim Build:** `register_minimax.py` und `sitecustomize.py` werden
+in `<site-packages>/` installiert. Beim Start eines jeden Python-Prozesses
+führt Python `sitecustomize.py` automatisch aus, welches die Registrierung in
+`lfx.base.models.provider_registry` vornimmt — **kein Patch der Core-Files**.
+
+Vorteile gegenüber dem alten Patching-Ansatz:
+- Funktioniert mit jeder künftigen `langflowai/langflow:latest`-Version
+- Eine Quelle der Wahrheit für MiniMax-Metadaten
+- Kein Cascade-Replace von Strings, das bei Refactors bricht
 
 Details: [docs/INTEGRATION.md](docs/INTEGRATION.md)
 
@@ -97,18 +108,20 @@ Details: [docs/INTEGRATION.md](docs/INTEGRATION.md)
 
 ```
 st-langflow-aio/
-├── Dockerfile                    # Build mit allen Patches
+├── Dockerfile                    # Build mit Registry-Install
 ├── docker-compose.yml            # Postgres + Langflow
 ├── inject/
-│   ├── patch_full_provider.py   # Hauptpatch (5 Files)
-│   ├── verify_inplace.py        # Verifiziert die Patches
+│   ├── register_minimax.py      # ProviderRegistry-Deskriptor
+│   ├── sitecustomize.py         # Auto-Registrierung beim Startup
+│   ├── verify_inplace.py        # Verifiziert Registrierung (7 Checks)
 │   └── smoke_test.py            # API-Smoke-Test
 └── docs/INTEGRATION.md          # Tech-Doku
 ```
 
 ## Releases
 
-- [v0.2.0](https://github.com/steimbyte/st-langflow-aio/releases/tag/v0.2.0) — aktuell, verifiziert
+- [v0.3.0](https://github.com/steimerbyte/st-langflow-aio/releases/tag/v0.3.0) — aktuell, Registry-basiert, kompatibel mit Langflow 1.13+
+- [v0.2.x](https://github.com/steimerbyte/st-langflow-aio/releases/tag/v0.2.3) — Patching-basiert (Legacy)
 - v0.1.x — Pre-release Iterationen
 
 ## Lizenz & Credits
