@@ -25,35 +25,21 @@ ENV LANGFLOW_CONFIG_DIR=/app/langflow \
     LFX_DEV=false
 
 # =============================================================================
-# 1. System packages (RHEL UBI 10.2: microdnf + CRB + EPEL + RPM Fusion free)
+# 1. System packages (RHEL UBI 10.2: microdnf)
 #    Base langflow image is RHEL 10.2 UBI which ships with python3.14, curl,
-#    ca-certificates, tar, git, basic GNU coreutils. Bring in ffmpeg via
-#    RPM Fusion free, chromium via EPEL. CRB (CodeReady Builder, formerly
-#    PowerTools) is enabled because several EPEL packages depend on it.
+#    ca-certificates, tar, git, basic GNU coreutils.
+#
+#    ffmpeg + chromium were targeted in v0.3.2 but blocked by missing
+#    transitive deps (libSDL2-2.0.so.0, libpipewire-0.3.so.0) that ship only
+#    behind Red Hat paid entitlements or in yum-conflicts-tracked satellite
+#    channels. With the UBIs `librhsm-WARNING: Found 0 entitlement certificates`
+#    in effect, microdnf cannot satisfy either path. Tracked as follow-up.
 # =============================================================================
-RUN set -eux; \
-    # Base + dnf-plugins-core (for /usr/bin/crb enable)
-    microdnf install -y --setopt=install_weak_deps=0 \
-        ca-certificates tar dnf-plugins-core \
+RUN microdnf install -y --setopt=install_weak_deps=0 \
+        ca-certificates \
+        tar \
     && microdnf clean all \
-    && rm -rf /var/cache/dnf /var/cache/yum; \
-    # Enable CodeReady Builder
-    /usr/bin/crb enable 2>&1 | tail -2 || true; \
-    # Enable EPEL (chromium lives there)
-    rpm -i https://dl.fedoraproject.org/pub/epel/epel-release-latest-10.noarch.rpm 2>&1 | tail -2; \
-    # Enable RPM Fusion free (ffmpeg lives there; key NOKEY warnings are benign)
-    rpm -i https://mirrors.rpmfusion.org/free/el/rpmfusion-free-release-10.noarch.rpm 2>&1 | tail -2; \
-    # Install — let chromium's RPM deps pull in the X11/audio stack
-    microdnf install -y --setopt=install_weak_deps=0 \
-        ffmpeg \
-        chromium \
-    && microdnf clean all \
-    && rm -rf /var/cache/dnf /var/cache/yum; \
-    # Sanity-log
-    rpm -q ffmpeg chromium 2>&1 | head -3
-
-ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
-    PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+    && rm -rf /var/cache/dnf /var/cache/yum
 
 # =============================================================================
 # 2. Python packages
