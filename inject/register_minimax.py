@@ -50,9 +50,17 @@ MINIMAX_MODELS_DETAILED: list[dict] = [
 ]
 
 
-def load_minimax_catalog() -> tuple[dict, ...]:
-    """Return the static MiniMax catalog as a tuple of metadata rows."""
-    return tuple(MINIMAX_MODELS_DETAILED)
+def load_minimax_catalog() -> list[dict]:
+    """Return the static MiniMax catalog as a list of metadata rows.
+
+    langflow's ``provider_queries.get_models_detailed`` calls ``get_registered_model_catalogs``
+    which in turn validates each registered catalog loader with
+    ``isinstance(rows, list)`` and a series of shape assertions; a tuple or
+    any non-list iterable triggers a logged-but-swallowed TypeError that
+    silently empties the catalog group. Returning the raw list keeps the
+    assertions happy.
+    """
+    return MINIMAX_MODELS_DETAILED
 
 
 # Module-path dotted reference for ProviderDescriptor.catalog_loader
