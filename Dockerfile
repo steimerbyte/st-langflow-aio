@@ -73,7 +73,7 @@ RUN uv venv --python 3.14 /app/.venv --seed \
     && uv pip install --python /app/.venv/bin/python \
         'setuptools<81' \
         wheel \
-        langflow \
+        'langflow==1.12.3' \
         langchain-anthropic \
         'psycopg[binary]' \
         yt-dlp \
