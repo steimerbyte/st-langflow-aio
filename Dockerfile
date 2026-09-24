@@ -14,7 +14,7 @@
 #  Smoke:  docker exec -it <container> python3 /tmp/smoke_test.py <key>
 # =============================================================================
 
-FROM fedora:44
+FROM fedora:46
 
 ENV LANGFLOW_CONFIG_DIR=/app/langflow \
     LANGFLOW_DEV=false \
@@ -71,9 +71,12 @@ RUN dnf install -y --setopt=install_weak_deps=0 \
 
 # =============================================================================
 # 2. Python packages (langflow + ecosystem + MiniMax deps)
+#    Fedora 46 ships Python 3.15 with newer setuptools that drops
+#    pkg_resources by default. We pin setuptools<81 which still ships it,
+#    so pandas/lxml source builds don't crash.
 # =============================================================================
-RUN pip install --upgrade --break-system-packages pip setuptools wheel \
-    && pip install --break-system-packages \
+RUN pip install --upgrade --break-system-packages 'pip<25' 'setuptools<81' wheel \
+    && pip install --break-system-packages --no-build-isolation \
         langflow \
         langchain-anthropic \
         psycopg2-binary \
