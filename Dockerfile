@@ -82,7 +82,7 @@ RUN pip install --upgrade --break-system-packages \
         hatchling \
         hatch-vcs \
         hatch-fancy-pypi-readme \
-    && pip install --break-system-packages --no-build-isolation \
+    && pip install --break-system-packages \
         langflow \
         langchain-anthropic \
         'psycopg[binary]' \
